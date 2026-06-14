@@ -4,6 +4,19 @@ A FastHTML web app that reads the room of a Hacker News discussion: paste a Hack
 
 Public repo: <https://github.com/jgbrwn/hn-readtheroom>
 
+
+## Screenshots
+
+### Homepage
+
+![Hacker News Read The Room homepage](docs/assets/homepage.png)
+
+### Summary page
+
+Example: [HN item 24670746](https://hn-readtheroom.exe.xyz/item?id=24670746)
+
+![Hacker News Read The Room summary page](docs/assets/summary-24670746.png)
+
 ## Features
 
 - FastHTML + MonsterUI interface with HTMX loading/polling.
