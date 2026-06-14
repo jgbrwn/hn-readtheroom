@@ -10,12 +10,12 @@ from llm_hacker_news import process_hn_comments
 
 APP_TITLE = "Hacker News — Read The Room"
 DB_PATH = os.getenv("DB_PATH", "readtheroom.db")
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 HN_FIREBASE = "https://hacker-news.firebaseio.com/v0/item/{id}.json"
 HN_ALGOLIA = "https://hn.algolia.com/api/v1/items/{id}"
 OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models"
 OPENROUTER_CHAT = "https://openrouter.ai/api/v1/chat/completions"
-GEN_POOL = ThreadPoolExecutor(max_workers=int(os.getenv("GEN_WORKERS", "2")))
+GEN_POOL = ThreadPoolExecutor(max_workers=int(os.getenv("GEN_WORKERS", "10")))
 locks, locks_guard, submitted = {}, threading.Lock(), set()
 
 # ---------- config / db ----------
@@ -183,7 +183,7 @@ def hn_thread(hn_id):
 def prompt_for(meta, comments):
     return f'''You are writing for a polished web app named "Hacker News — Read The Room".
 
-Read the room of this Hacker News discussion. Summarize the sentiment and social texture of the comments, not just the article. Be specific, measured, and useful. Do not invent quotes. If there are few comments, say so.
+Read the room of this Hacker News discussion. Summarize the sentiment, themes, and social texture of the comments, not just the article. Be specific, measured, and useful. If there are few comments, say so. Use direct quotations from HN users where they materially improve the summary: quote exactly in double quotes, attribute the author, and fix HTML entities. Never invent quotes or attribution.
 
 HN item: {meta['title']}
 HN URL: {meta['hn_url']}
@@ -197,9 +197,16 @@ Return clean Markdown only with these sections:
 ## Points of tension
 ## Notable technical/practical objections
 ## Undercurrents, jokes, and skepticism
+## Representative quotes
+## Uncommon or outlier opinions
 ## Bottom line
 
-Keep it concise but substantive. Avoid generic AI phrasing.
+Guidance:
+- Keep it substantive and a little longer when the thread has enough material, but avoid padding.
+- Include direct quotes with author attribution where appropriate, using exact double-quoted text.
+- Include a section for uncommon/outlier opinions that are not representative of the main room.
+- Fix HTML entities in quoted text.
+- Avoid generic AI phrasing.
 
 Discussion transcript follows in thread-path notation:
 
@@ -334,7 +341,7 @@ def ext_link(label, href):
 
 def footer():
     return Footer(
-        P("Built with ", ext_link("FastHTML", "https://fastht.ml/"), " + ", ext_link("MonsterUI", "https://github.com/AnswerDotAI/MonsterUI"), " + ", ext_link("SQLite", "https://sqlite.org/")),
+        P("Built with ", ext_link("FastHTML", "https://fastht.ml/"), " + ", ext_link("MonsterUI", "https://github.com/AnswerDotAI/MonsterUI"), " + ", ext_link("HTMX", "https://htmx.org"), " + ", ext_link("SQLite", "https://sqlite.org/")),
         P("HN comment loading powered by Simon Willison’s ", ext_link("llm-hacker-news", "https://github.com/simonw/llm-hacker-news"), " plugin", cls="mt-2"),
         cls="text-center text-sm text-slate-500 mt-14 pb-8")
 
