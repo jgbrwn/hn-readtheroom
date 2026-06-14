@@ -259,20 +259,60 @@ def ensure_generation(hn_id, force=False):
     GEN_POOL.submit(generation_task, hn_id, force)
 
 # ---------- UI ----------
+THEME_BOOT = Script("""
+(() => {
+  const saved = localStorage.getItem('rtr-theme') || 'dark';
+  document.documentElement.classList.toggle('dark', saved === 'dark');
+  localStorage.setItem('__FRANKEN__', JSON.stringify({mode:saved}));
+})();
+""")
+
+THEME_JS = Script("""
+function rtrToggleTheme(){
+  const dark = !document.documentElement.classList.contains('dark');
+  const mode = dark ? 'dark' : 'light';
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('rtr-theme', mode);
+  localStorage.setItem('__FRANKEN__', JSON.stringify({mode}));
+  document.querySelectorAll('[data-theme-label]').forEach(el => el.textContent = dark ? 'Light mode' : 'Dark mode');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const dark = document.documentElement.classList.contains('dark');
+  document.querySelectorAll('[data-theme-label]').forEach(el => el.textContent = dark ? 'Light mode' : 'Dark mode');
+});
+""")
+
 CUSTOM_CSS = Style("""
-html, body { background:#f8fafc !important; color:#0f172a !important; color-scheme: light !important; }
-.dark body, .uk-section, .uk-container { background:#f8fafc !important; color:#0f172a !important; }
-h1,h2,h3,h4,p,article,li,label,.uk-article,.uk-card { color:#0f172a !important; }
-.text-slate-600 { color:#475569 !important; } .text-slate-500 { color:#64748b !important; }
-.uk-card { background:rgba(255,255,255,.94) !important; border:1px solid #e2e8f0 !important; box-shadow:0 12px 30px rgba(15,23,42,.05) !important; }
-.uk-input, input { background:#fff !important; color:#0f172a !important; border-color:#cbd5e1 !important; }
-.uk-input::placeholder, input::placeholder { color:#94a3b8 !important; opacity:1 !important; }
-.uk-btn-primary { background:#0f172a !important; color:#fff !important; border-color:#0f172a !important; }
-.uk-btn-default, .uk-btn-secondary { background:#fff !important; color:#0f172a !important; border-color:#cbd5e1 !important; }
+:root {
+  --bg:#f8fafc; --fg:#0f172a; --muted:#475569; --faint:#64748b;
+  --card:rgba(255,255,255,.94); --card-border:#e2e8f0; --input:#fff;
+  --primary:#0f172a; --primary-fg:#fff; --shadow:0 14px 34px rgba(15,23,42,.07);
+}
+html.dark {
+  --bg:#080d18; --fg:#f8fafc; --muted:#cbd5e1; --faint:#94a3b8;
+  --card:rgba(15,23,42,.78); --card-border:#263449; --input:#0d1626;
+  --primary:#e2e8f0; --primary-fg:#08111f; --shadow:0 18px 50px rgba(0,0,0,.35);
+}
+html, body { background:var(--bg) !important; color:var(--fg) !important; color-scheme: light dark; }
+body { background-image: radial-gradient(circle at 50% -10%, rgba(59,130,246,.10), transparent 38%) !important; }
+html.dark body { background-image: radial-gradient(circle at 50% -10%, rgba(56,189,248,.16), transparent 35%) !important; }
+.uk-section, .uk-container { background:transparent !important; color:var(--fg) !important; }
+h1,h2,h3,h4,p,article,li,label,.uk-article,.uk-card { color:var(--fg) !important; }
+.text-slate-600 { color:var(--muted) !important; } .text-slate-500 { color:var(--faint) !important; }
+.uk-card { background:var(--card) !important; border:1px solid var(--card-border) !important; box-shadow:var(--shadow) !important; backdrop-filter: blur(10px); }
+.uk-input, input { background:var(--input) !important; color:var(--fg) !important; border-color:var(--card-border) !important; }
+.uk-input::placeholder, input::placeholder { color:var(--faint) !important; opacity:1 !important; }
+.rtr-primary, button.rtr-primary, a.rtr-primary { background-color:var(--primary) !important; background-image:none !important; color:var(--primary-fg) !important; border-color:var(--primary) !important; opacity:1 !important; }
+.rtr-primary *, button.rtr-primary * { color:var(--primary-fg) !important; }
+.uk-btn-primary, .uk-btn.uk-btn-primary, button.uk-btn-primary { background-color:var(--primary) !important; color:var(--primary-fg) !important; border-color:var(--primary) !important; }
+.uk-btn-default, .uk-btn-secondary, .theme-toggle { background:var(--card) !important; color:var(--fg) !important; border:1px solid var(--card-border) !important; box-shadow:0 8px 22px rgba(0,0,0,.05) !important; }
+html.dark .uk-btn-default, html.dark .uk-btn-secondary, html.dark .theme-toggle { box-shadow:0 12px 30px rgba(0,0,0,.22) !important; }
 a { color:inherit; }
-.prose, .prose p, .prose li { color:#1e293b !important; }
-.prose h1, .prose h2, .prose h3 { color:#0f172a !important; }
-.stat-card { background:#fff !important; border:1px solid #e2e8f0 !important; }
+.prose, .prose p, .prose li { color:var(--muted) !important; }
+.prose h1, .prose h2, .prose h3 { color:var(--fg) !important; }
+.stat-card { background:var(--card) !important; border:1px solid var(--card-border) !important; box-shadow:var(--shadow) !important; }
+.theme-row { display:flex; justify-content:flex-end; margin-bottom:1.5rem; }
+.theme-toggle { border-radius:999px; padding:.55rem .9rem; font-size:.9rem; }
 @media (max-width: 640px) {
   h1, .uk-article-title { font-size: 2.6rem !important; line-height: 1.05 !important; }
   .text-5xl, .sm\\:text-6xl { font-size: 3.4rem !important; line-height: .95 !important; }
@@ -283,10 +323,16 @@ a { color:inherit; }
 }
 """)
 
+def theme_toggle():
+    return Div(Button(Span("Light mode", data_theme_label="1"), type="button", submit=False, onclick="rtrToggleTheme()", cls="theme-toggle"), cls="theme-row")
+
+def primary_style():
+    return "background-color:#e2e8f0!important;color:#08111f!important;border-color:#e2e8f0!important"
+
 def footer():
     return Footer("Built with FastHTML + MonsterUI + SQLite", cls="text-center text-sm text-slate-500 mt-14 pb-8")
 
-def page(*content): return Title(APP_TITLE), Container(Div(*content, footer(), cls="max-w-4xl mx-auto py-10 px-4"))
+def page(*content): return Title(APP_TITLE), Container(Div(theme_toggle(), *content, footer(), cls="max-w-4xl mx-auto py-10 px-4"))
 def error_card(msg): return Card(P(str(msg), cls="text-red-900"), header=H3("Couldn’t read the room", cls="text-red-700"), cls="border border-red-200 bg-red-50 shadow-sm")
 def stat(label, value): return Div(P(label, cls="text-xs uppercase tracking-widest text-slate-500"), P(value if value is not None else "—", cls="text-lg font-medium"), cls="stat-card rounded-xl p-4")
 
@@ -295,19 +341,19 @@ def loading_card(hn_id, title="Reading the room"):
 
 def summary_view(row):
     meta = [stat("HN score", row["score"]), stat("comments", row["comment_count"] or row["descendants"]), stat("posted by", row["by"])]
-    links = [A("Open on HN ↗", href=row['hn_url'], target="_blank", rel="noopener", cls="uk-btn uk-btn-primary")]
+    links = [A("Open on HN ↗", href=row['hn_url'], target="_blank", rel="noopener", cls="uk-btn uk-btn-primary rtr-primary", style=primary_style())]
     if row["url"]: links.append(A("Original article ↗", href=row["url"], target="_blank", rel="noopener", cls="uk-btn uk-btn-default"))
     return Div(
         Div(A("← Analyze another", href="/", cls="uk-btn uk-btn-default"), Form(Input(type="hidden", name="id", value=str(row['hn_id'])), Button("Regenerate", cls=(ButtonT.secondary,)), method="post", action="/regenerate", cls="inline"), cls="flex justify-between gap-3 mb-8"),
         Article(ArticleTitle(A(row['title'], href=row['hn_url'], target="_blank", rel="noopener", cls="hover:underline")), ArticleMeta(f"generated by {row['model']} on {nice_date(row['generated_at'])} · prompt {display_prompt_version(row['prompt_version'])}"), Div(*meta, cls="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 mb-6"), Div(*links, cls="flex flex-wrap gap-3 mb-8"), Div(render_md(row['markdown']), cls="mt-8 prose prose-slate max-w-none leading-8")))
 
-app, rt = fast_app(hdrs=(Script("localStorage.setItem('__FRANKEN__', JSON.stringify({mode:'light'})); document.documentElement.classList.remove('dark');"), *Theme.slate.headers(), CUSTOM_CSS), title=APP_TITLE, live=False)
+app, rt = fast_app(hdrs=(THEME_BOOT, *Theme.slate.headers(), THEME_JS, CUSTOM_CSS), title=APP_TITLE, live=False)
 
 @rt('/')
 def get():
     return page(
         Div(P("Hacker News", cls="tracking-[0.35em] uppercase text-sm text-slate-500"), H1("Read The Room", cls="text-5xl sm:text-6xl font-semibold tracking-tight mt-3"), P("Paste a Hacker News item ID or URL. We’ll distill the comments into a calm, cached sentiment brief — what people agree on, where they push back, and the jokes underneath.", cls="text-xl text-slate-600 mt-5 max-w-3xl mx-auto"), cls="text-center mb-10"),
-        Card(Form(Label("HN item ID or URL", For="q", cls="font-medium"), Input(name="q", id="q", placeholder="43875136 or https://news.ycombinator.com/item?id=43875136", required=True, cls="uk-input text-lg"), Button("Read the room", cls=(ButtonT.primary, "mt-3 w-full")), Div(id="form-status", cls="text-sm text-slate-500 mt-2"), method="post", action="/analyze", hx_post="/analyze", hx_target="#form-status", hx_swap="innerHTML", hx_indicator="#form-status"), header=H2("Analyze a discussion", cls="text-2xl font-medium"), cls="shadow-sm bg-white/90"))
+        Card(Form(Label("HN item ID or URL", For="q", cls="font-medium"), Input(name="q", id="q", placeholder="43875136 or https://news.ycombinator.com/item?id=43875136", required=True, cls="uk-input text-lg"), Button("Read the room", cls=(ButtonT.primary, "rtr-primary mt-3 w-full"), style=primary_style()), Div(id="form-status", cls="text-sm text-slate-500 mt-2"), method="post", action="/analyze", hx_post="/analyze", hx_target="#form-status", hx_swap="innerHTML", hx_indicator="#form-status"), header=H2("Analyze a discussion", cls="text-2xl font-medium"), cls="shadow-sm bg-white/90"))
 
 @rt('/analyze')
 def post(q: str, request: Request):
