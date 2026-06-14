@@ -1,0 +1,50 @@
+Hacker News — Read The Room
+Copyright (c) 2026 jgbrwn
+Repository: https://github.com/jgbrwn/hn-readtheroom
+
+This project is licensed under the ISC License. See LICENSE.
+
+Open source projects and services used or integrated:
+
+- FastHTML
+  https://fastht.ml/
+  Python web framework used for routing, HTML generation, and HTMX integration.
+
+- MonsterUI
+  https://github.com/AnswerDotAI/MonsterUI
+  UI framework for FastHTML used for components, styling, and Markdown rendering.
+
+- HTMX
+  https://htmx.org/
+  Used for lightweight loading/polling interactions.
+
+- SQLite
+  https://sqlite.org/
+  Embedded database used for summary caching, metadata, settings, and rate-limit state.
+
+- Simon Willison's llm-hacker-news
+  https://github.com/simonw/llm-hacker-news
+  Used for Hacker News comment-thread processing/formatting.
+
+- Simon Willison's llm
+  https://llm.datasette.io/
+  Installed as a dependency of llm-hacker-news. This application currently calls OpenRouter directly rather than using llm as the model execution layer.
+
+- Mistletoe / mistlefoot
+  https://github.com/miyuchina/mistletoe
+  Markdown parsing/rendering dependency used through MonsterUI.
+
+- OpenRouter
+  https://openrouter.ai/
+  Upstream LLM API used for summary generation.
+
+- Hacker News APIs
+  Official Firebase API: https://github.com/HackerNews/API
+  Algolia HN API: https://hn.algolia.com/api
+  Used for item validation and comment retrieval.
+
+- Python requests
+  https://requests.readthedocs.io/
+  Used for outbound HTTP requests.
+
+- python-dotenv is listed as a dependency from earlier development, though the app currently reads .env directly for compatibility with both KEY=value and KEY: value formats.
