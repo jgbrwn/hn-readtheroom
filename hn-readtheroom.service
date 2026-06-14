@@ -1,0 +1,16 @@
+[Unit]
+Description=HN Read The Room FastHTML app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/hn-readtheroom
+Environment=PORT=8000
+ExecStart=/home/exedev/hn-readtheroom/.venv/bin/python /home/exedev/hn-readtheroom/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

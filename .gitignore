@@ -1,0 +1,6 @@
+.venv/
+.env
+*.db
+*.db-*
+__pycache__/
+.sesskey

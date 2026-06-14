@@ -1,0 +1,9 @@
+python-fasthtml
+monsterui
+fastlite
+llm
+llm-hacker-news
+requests
+python-dotenv
+mistletoe
+markdownify
