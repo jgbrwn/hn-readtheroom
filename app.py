@@ -11,6 +11,8 @@ from llm_hacker_news import process_hn_comments
 APP_TITLE = "Hacker News — Read The Room"
 DB_PATH = os.getenv("DB_PATH", "readtheroom.db")
 PROMPT_VERSION = "v3"
+DEFAULT_MODELS = ["qwen/qwen3.5-flash-02-23", "deepseek/deepseek-v4-flash"]
+OPENROUTER_TIMEOUT = int(os.getenv("OPENROUTER_TIMEOUT", "20"))
 HN_FIREBASE = "https://hacker-news.firebaseio.com/v0/item/{id}.json"
 HN_ALGOLIA = "https://hn.algolia.com/api/v1/items/{id}"
 OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models"
@@ -152,7 +154,22 @@ def refresh_models(force=False):
             set_kv(con, "models_refreshed_at", now_iso())
     except Exception as e: print("model refresh failed", e)
 
+def free_model_mode():
+    return os.getenv("OPENROUTER_FREE_MODE", "").lower() in ("1", "true", "yes", "on")
+
+def preferred_paid_model():
+    with db() as con:
+        preferred = get_kv(con, "preferred_paid_model")
+    return preferred if preferred in DEFAULT_MODELS else DEFAULT_MODELS[0]
+
+def set_preferred_paid_model(model):
+    if model in DEFAULT_MODELS:
+        with db() as con: set_kv(con, "preferred_paid_model", model)
+
 def eligible_models():
+    if not free_model_mode():
+        preferred = preferred_paid_model()
+        return [preferred] + [m for m in DEFAULT_MODELS if m != preferred]
     refresh_models(False)
     with db() as con:
         rows = con.execute('''select m.model_id from models m left join model_failures f using(model_id)
@@ -216,7 +233,7 @@ Discussion transcript follows in thread-path notation:
 def call_openrouter(model, prompt):
     key = openrouter_key()
     if not key: raise RuntimeError("OPENROUTER_API_KEY is missing.")
-    r = requests.post(OPENROUTER_CHAT, timeout=180, headers={"Authorization": f"Bearer {key}", "Content-Type":"application/json", "HTTP-Referer":"https://hn-readtheroom.exe.xyz/", "X-Title":"HN Read The Room"}, json={"model": model, "messages":[{"role":"user","content":prompt}], "temperature":0.25})
+    r = requests.post(OPENROUTER_CHAT, timeout=OPENROUTER_TIMEOUT, headers={"Authorization": f"Bearer {key}", "Content-Type":"application/json", "HTTP-Referer":"https://hn-readtheroom.exe.xyz/", "X-Title":"HN Read The Room"}, json={"model": model, "messages":[{"role":"user","content":prompt}], "temperature":0.25})
     if r.status_code >= 400: raise RuntimeError(f"OpenRouter {r.status_code}: {r.text[:500]}")
     return r.json()["choices"][0]["message"]["content"].strip()
 
@@ -239,7 +256,7 @@ def generate_summary(hn_id, force=False):
         errors = []
         for model in eligible_models():
             try:
-                md = call_openrouter(model, prompt_for(meta, comments)); gen = now_iso(); record_model_success(model)
+                md = call_openrouter(model, prompt_for(meta, comments)); gen = now_iso(); record_model_success(model); set_preferred_paid_model(model)
                 with db() as con:
                     con.execute('''insert into summaries(hn_id,markdown,model,generated_at,prompt_version,comment_count,status,error)
                     values(?,?,?,?,?,?,'done',null)
@@ -350,7 +367,9 @@ def error_card(msg): return Card(P(str(msg), cls="text-red-900"), header=H3("Cou
 def stat(label, value): return Div(P(label, cls="text-xs uppercase tracking-widest text-slate-500"), P(value if value is not None else "—", cls="text-lg font-medium"), cls="stat-card rounded-xl p-4")
 
 def loading_card(hn_id, title="Reading the room"):
-    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P("Fetching comments, choosing a long-context free model, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div("This usually takes 20–90 seconds for a new item.", cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:2s, every 4s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
+    model_phrase = "choosing a long-context free model" if free_model_mode() else "asking the selected fast model"
+    timing = "This usually takes 20–90 seconds for a new item." if free_model_mode() else f"If the default model does not answer within {OPENROUTER_TIMEOUT} seconds, we’ll try the backup."
+    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P(f"Fetching comments, {model_phrase}, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div(timing, cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:2s, every 4s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
 
 def summary_view(row):
     meta = [stat("HN score", row["score"]), stat("comments", row["comment_count"] or row["descendants"]), stat("posted by", row["by"])]
