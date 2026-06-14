@@ -360,6 +360,7 @@ def footer():
     return Footer(
         P("Built with ", ext_link("FastHTML", "https://fastht.ml/"), " + ", ext_link("MonsterUI", "https://github.com/AnswerDotAI/MonsterUI"), " + ", ext_link("HTMX", "https://htmx.org"), " + ", ext_link("SQLite", "https://sqlite.org/")),
         P("HN comment loading powered by Simon Willison’s ", ext_link("llm-hacker-news", "https://github.com/simonw/llm-hacker-news"), " plugin", cls="mt-2"),
+        P(ext_link("Source on GitHub", "https://github.com/jgbrwn/hn-readtheroom"), cls="mt-2"),
         cls="text-center text-sm text-slate-500 mt-14 pb-8")
 
 def page(*content): return Title(APP_TITLE), Container(Div(theme_toggle(), *content, footer(), cls="max-w-4xl mx-auto py-10 px-4"))
