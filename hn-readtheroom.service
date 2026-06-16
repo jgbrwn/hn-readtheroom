@@ -8,7 +8,8 @@ Type=simple
 User=exedev
 WorkingDirectory=/home/exedev/hn-readtheroom
 Environment=PORT=8000
-ExecStart=/home/exedev/hn-readtheroom/.venv/bin/python /home/exedev/hn-readtheroom/app.py
+Environment=UVICORN_WORKERS=2
+ExecStart=/home/exedev/hn-readtheroom/.venv/bin/uvicorn app:app --host 0.0.0.0 --port ${PORT} --workers ${UVICORN_WORKERS}
 Restart=always
 RestartSec=3
 

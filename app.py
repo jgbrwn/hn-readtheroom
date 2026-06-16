@@ -62,6 +62,11 @@ def init_db():
           key text not null, bucket text not null, count integer not null default 0, primary key(key,bucket));
         create table if not exists kv(key text primary key, value text not null);
         ''')
+        cols = {r[1] for r in con.execute("pragma table_info(summaries)")}
+        if "processing_started_at" not in cols:
+            con.execute("alter table summaries add column processing_started_at text")
+        if "updated_at" not in cols:
+            con.execute("alter table summaries add column updated_at text")
 
 def get_kv(con, key):
     r = con.execute("select value from kv where key=?", (key,)).fetchone()
@@ -238,8 +243,24 @@ def call_openrouter(model, prompt):
     return r.json()["choices"][0]["message"]["content"].strip()
 
 def mark_processing(hn_id):
+    ts = now_iso()
     with db() as con:
-        con.execute("insert into summaries(hn_id,status,error) values(?,'processing',null) on conflict(hn_id) do update set status='processing',error=null", (hn_id,))
+        con.execute("insert into summaries(hn_id,status,error,processing_started_at,updated_at) values(?,'processing',null,?,?) on conflict(hn_id) do update set status='processing',error=null,processing_started_at=excluded.processing_started_at,updated_at=excluded.updated_at", (hn_id, ts, ts))
+
+def claim_generation(hn_id, force=False):
+    if not force and cached_summary(hn_id): return False
+    ts = now_iso()
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(timespec="seconds")
+    with db() as con:
+        con.execute("begin immediate")
+        row = con.execute("select status, processing_started_at from summaries where hn_id=?", (hn_id,)).fetchone()
+        if not force and row and row["status"] == "done":
+            con.commit(); return False
+        if not force and row and row["status"] == "processing" and (row["processing_started_at"] or "") > stale:
+            con.commit(); return False
+        con.execute("insert into summaries(hn_id,status,error,processing_started_at,updated_at) values(?,'processing',null,?,?) on conflict(hn_id) do update set status='processing',error=null,processing_started_at=excluded.processing_started_at,updated_at=excluded.updated_at", (hn_id, ts, ts))
+        con.commit()
+        return True
 
 def generate_summary(hn_id, force=False):
     if not force:
@@ -250,7 +271,7 @@ def generate_summary(hn_id, force=False):
         if not force:
             cached = cached_summary(hn_id)
             if cached: return cached
-        meta = validate_hn_item(hn_id); mark_processing(hn_id)
+        meta = validate_hn_item(hn_id)
         comments, count = hn_thread(hn_id)
         if count == 0 and (meta.get("descendants") or 0) == 0: raise ValueError("This HN item is valid, but it does not appear to have comments yet.")
         errors = []
@@ -258,25 +279,24 @@ def generate_summary(hn_id, force=False):
             try:
                 md = call_openrouter(model, prompt_for(meta, comments)); gen = now_iso(); record_model_success(model); set_preferred_paid_model(model)
                 with db() as con:
-                    con.execute('''insert into summaries(hn_id,markdown,model,generated_at,prompt_version,comment_count,status,error)
-                    values(?,?,?,?,?,?,'done',null)
-                    on conflict(hn_id) do update set markdown=excluded.markdown,model=excluded.model,generated_at=excluded.generated_at,prompt_version=excluded.prompt_version,comment_count=excluded.comment_count,status='done',error=null''', (hn_id, md, model, gen, PROMPT_VERSION, count))
+                    con.execute('''insert into summaries(hn_id,markdown,model,generated_at,prompt_version,comment_count,status,error,updated_at)
+                    values(?,?,?,?,?,?,'done',null,?)
+                    on conflict(hn_id) do update set markdown=excluded.markdown,model=excluded.model,generated_at=excluded.generated_at,prompt_version=excluded.prompt_version,comment_count=excluded.comment_count,status='done',error=null,updated_at=excluded.updated_at''', (hn_id, md, model, gen, PROMPT_VERSION, count, gen))
                 return cached_summary(hn_id)
             except Exception as e:
                 record_model_failure(model, e); errors.append(f"{model}: {e}")
-        with db() as con: con.execute("insert into summaries(hn_id,status,error) values(?,'error',?) on conflict(hn_id) do update set status='error',error=excluded.error", (hn_id, "\n".join(errors)))
+        with db() as con: con.execute("insert into summaries(hn_id,status,error,updated_at) values(?,'error',?,?) on conflict(hn_id) do update set status='error',error=excluded.error,updated_at=excluded.updated_at", (hn_id, "\n".join(errors), now_iso()))
         raise RuntimeError("All eligible OpenRouter models failed. " + (errors[-1] if errors else ""))
 
 def generation_task(hn_id, force=False):
     try: generate_summary(hn_id, force=force)
     except Exception as e:
-        with db() as con: con.execute("insert into summaries(hn_id,status,error) values(?,'error',?) on conflict(hn_id) do update set status='error',error=excluded.error", (hn_id, str(e)))
+        with db() as con: con.execute("insert into summaries(hn_id,status,error,updated_at) values(?,'error',?,?) on conflict(hn_id) do update set status='error',error=excluded.error,updated_at=excluded.updated_at", (hn_id, str(e), now_iso()))
     finally:
         with locks_guard: submitted.discard(hn_id)
 
 def ensure_generation(hn_id, force=False):
-    if force: mark_processing(hn_id)
-    if not force and cached_summary(hn_id): return
+    if not claim_generation(hn_id, force=force): return
     with locks_guard:
         if hn_id in submitted: return
         submitted.add(hn_id)
@@ -370,7 +390,7 @@ def stat(label, value): return Div(P(label, cls="text-xs uppercase tracking-wide
 def loading_card(hn_id, title="Reading the room"):
     model_phrase = "choosing a long-context free model" if free_model_mode() else "asking the selected fast model"
     timing = "This usually takes 20–90 seconds for a new item." if free_model_mode() else f"If the default model does not answer within {OPENROUTER_TIMEOUT} seconds, we’ll try the backup."
-    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P(f"Fetching comments, {model_phrase}, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div(timing, cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:2s, every 4s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
+    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P(f"Fetching comments, {model_phrase}, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div(timing, cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:2s, every 10s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
 
 def summary_view(row):
     meta = [stat("HN score", row["score"]), stat("comments", row["comment_count"] or row["descendants"]), stat("posted by", row["by"])]
@@ -425,8 +445,9 @@ def get(id: str = ""):
         row = cached_summary(hn_id)
         if not row:
             validate_hn_item(hn_id)
-            row = generate_summary(hn_id)
-        return PlainTextResponse(row["markdown"], media_type="text/markdown; charset=utf-8")
+            ensure_generation(hn_id)
+            return PlainTextResponse("Markdown is still being generated. Refresh this URL shortly, or view the status page at /item?id=%s\n" % hn_id, status_code=202, media_type="text/plain; charset=utf-8", headers={"Retry-After": "10"})
+        return PlainTextResponse(row["markdown"], media_type="text/markdown; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
     except Exception as e:
         return PlainTextResponse(f"Could not produce markdown: {e}", status_code=400)
 

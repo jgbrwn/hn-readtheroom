@@ -33,8 +33,8 @@ Example: [HN item 24670746](https://hn-readtheroom.exe.xyz/item?id=24670746)
 - If the primary model errors or times out, the backup is tried. If the backup succeeds, it becomes the preferred model for future generations.
 - Optional free-model mode using OpenRouter model discovery for free text-to-text models with >=1M context.
 - SQLite caching of HN metadata, model metadata, summaries, generation state, model failures, and rate limits.
-- Background generation worker pool; page requests receive a loading state and poll until complete.
-- Per-item generation deduplication so multiple users requesting the same item share one generation job.
+- Background generation worker pool; page requests receive a loading state and poll until complete. Polling is intentionally conservative to reduce traffic spikes.
+- SQLite-backed per-item generation deduplication so multiple users/processes requesting the same item share one generation job.
 - Regenerate button.
 - Raw Markdown endpoint: `/item.md?id=43875136`.
 - Dark mode default with light/dark toggle.
@@ -71,6 +71,9 @@ DB_PATH=readtheroom.db
 
 # HTTP port
 PORT=8000
+
+# Number of Uvicorn web worker processes in systemd deployment
+UVICORN_WORKERS=2
 ```
 
 ## Local development
@@ -95,7 +98,7 @@ Open <http://localhost:8000>.
 - `GET /item?id=HN_ID` — summary page. Shows loading state while generation is running.
 - `GET /status?id=HN_ID` — HTMX polling endpoint.
 - `POST /regenerate` — regenerates a summary for an item.
-- `GET /item.md?id=HN_ID` — raw Markdown. If missing, generates first and then returns `text/markdown`.
+- `GET /item.md?id=HN_ID` — raw Markdown. If missing, queues generation and returns `202` with `Retry-After`.
 - `GET /healthz` — health check, returns `ok`.
 
 ## Production deployment with systemd
@@ -126,13 +129,14 @@ sudo systemctl restart hn-readtheroom
 journalctl -u hn-readtheroom -f
 ```
 
-The included service assumes:
+The included service runs Uvicorn directly with multiple worker processes. It assumes:
 
 - project path: `/home/exedev/hn-readtheroom`
 - user: `exedev`
 - port: `8000`
+- Uvicorn workers: `2`
 
-Edit `hn-readtheroom.service` if your deployment path/user differs.
+Edit `hn-readtheroom.service` if your deployment path/user/worker count differs. The app uses SQLite-backed generation claiming so multiple Uvicorn workers do not duplicate the same summary job.
 
 ## Model behavior
 
@@ -160,7 +164,7 @@ Main stored data:
 - HN item metadata
 - generated Markdown summaries
 - prompt version and model name
-- generation status/errors
+- generation status/errors, including processing timestamps for stale-job recovery
 - OpenRouter model metadata
 - model failure counts
 - lightweight rate-limit buckets
