@@ -33,7 +33,7 @@ Example: [HN item 24670746](https://hn-readtheroom.exe.xyz/item?id=24670746)
 - If the primary model errors or times out, the backup is tried. If the backup succeeds, it becomes the preferred model for future generations.
 - Optional free-model mode using OpenRouter model discovery for free text-to-text models with >=1M context.
 - SQLite caching of HN metadata, model metadata, summaries, generation state, model failures, and rate limits.
-- Background generation worker pool; page requests receive a loading state and poll until complete. Polling is intentionally conservative to reduce traffic spikes.
+- Background generation worker pool; page requests receive a loading state and poll until complete.
 - SQLite-backed per-item generation deduplication so multiple users/processes requesting the same item share one generation job.
 - Regenerate button.
 - Raw Markdown endpoint: `/item.md?id=43875136`.

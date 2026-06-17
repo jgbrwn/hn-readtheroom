@@ -390,7 +390,7 @@ def stat(label, value): return Div(P(label, cls="text-xs uppercase tracking-wide
 def loading_card(hn_id, title="Reading the room"):
     model_phrase = "choosing a long-context free model" if free_model_mode() else "asking the selected fast model"
     timing = "This usually takes 20–90 seconds for a new item." if free_model_mode() else f"If the default model does not answer within {OPENROUTER_TIMEOUT} seconds, we’ll try the backup."
-    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P(f"Fetching comments, {model_phrase}, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div(timing, cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:2s, every 10s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
+    return Card(Div(Div(cls="h-2 w-2 rounded-full bg-slate-900 animate-ping"), P(f"Fetching comments, {model_phrase}, and writing a cached sentiment brief…", cls="text-slate-600"), cls="flex items-center gap-4"), Div(timing, cls="text-sm text-slate-500 mt-4"), hx_get=f"/status?id={hn_id}", hx_trigger="load delay:1s, every 2s", hx_swap="outerHTML", header=H2(title, cls="text-2xl font-medium"), cls="shadow-sm")
 
 def summary_view(row):
     meta = [stat("HN score", row["score"]), stat("comments", row["comment_count"] or row["descendants"]), stat("posted by", row["by"])]
